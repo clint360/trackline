@@ -1,51 +1,47 @@
 import { NextResponse } from "next/server";
-import {
-  AGENCIES,
-  BUS_TEMPLATES,
-  CITIES,
-  generateTripsForRoute,
-  getAgencyById,
-  getBusTemplateById,
-  getCityById,
-} from "@/lib/mock-data";
-import { pickAvailability } from "@/lib/utils";
-import type { SearchedTrip } from "@/lib/types";
+import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { searchTrips } from "@/lib/supabase/queries";
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const fromCityId = searchParams.get("fromCityId") ?? "";
-  const toCityId = searchParams.get("toCityId") ?? "";
-  const date = searchParams.get("date") ?? "";
+  const url = new URL(req.url);
+  const fromCityId = url.searchParams.get("fromCityId");
+  const toCityId = url.searchParams.get("toCityId");
+  const date = url.searchParams.get("date");
 
-  const fromCity = getCityById(fromCityId);
-  const toCity = getCityById(toCityId);
-  if (!fromCity || !toCity) {
-    return NextResponse.json({ error: "Invalid cities" }, { status: 400 });
+  console.log("[search] called with:", { fromCityId, toCityId, date });
+
+  if (!fromCityId || !toCityId || !date) {
+    console.log("[search] missing params");
+    return NextResponse.json(
+      { error: "fromCityId, toCityId, date are required" },
+      { status: 400 }
+    );
   }
-  if (fromCity.id === toCity.id) {
-    return NextResponse.json({ error: "Same city" }, { status: 400 });
+  if (fromCityId === toCityId) {
+    console.log("[search] same city, returning empty");
+    return NextResponse.json({ trips: [] });
   }
 
-  // Simulate latency
-  await new Promise((r) => setTimeout(r, 600));
+  const sb = getSupabaseAdmin();
+  console.log("[search] supabase admin live:", Boolean(sb));
+  if (!sb) {
+    return NextResponse.json(
+      { error: "Database not configured" },
+      { status: 500 }
+    );
+  }
 
-  const raw = generateTripsForRoute(fromCity.code, toCity.code, date);
-  const trips: SearchedTrip[] = raw.map((t) => {
-    const agency = getAgencyById(t.agencyId)!;
-    const tpl = getBusTemplateById(t.busTemplateId)!;
-    const dropOff = t.dropOffId
-      ? toCity.dropOffs?.find((d) => d.id === t.dropOffId)
-      : undefined;
-    return {
-      ...t,
-      agency,
-      fromCity,
-      toCity,
-      busTemplate: tpl,
-      dropOff,
-      availabilityLabel: pickAvailability(t.seatsLeft ?? 0, t.total ?? 1),
-    };
-  });
-
-  return NextResponse.json({ trips });
+  try {
+    console.log("[search] calling searchTrips...");
+    const trips = await searchTrips(sb, { fromCityId, toCityId, date });
+    console.log("[search] success, trips count:", trips.length);
+    return NextResponse.json(
+      { trips },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "search failed";
+    console.error("[search] error:", msg, e);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

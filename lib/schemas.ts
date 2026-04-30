@@ -28,6 +28,12 @@ export const passengerSchema = z.object({
     .string()
     .min(8, "Phone too short")
     .regex(cmPhone, "Enter a valid Cameroon phone (e.g. 6XX XXX XXX)"),
+  email: z
+    .string()
+    .email("Enter a valid email")
+    .max(120, "Email is too long")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
 });
 export type PassengerForm = z.infer<typeof passengerSchema>;
 

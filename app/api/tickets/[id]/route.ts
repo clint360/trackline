@@ -1,39 +1,57 @@
 import { NextResponse } from "next/server";
-import { seededRandom } from "@/lib/utils";
+import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { fetchTicket } from "@/lib/supabase/queries";
 
 export async function GET(
   _req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-
-  // Parse e.g. TRP-YDE-DLA-1234
-  const parts = id.split("-");
-  if (parts.length < 4) {
-    return NextResponse.json({ error: "Invalid consignment" }, { status: 404 });
+  if (!id) {
+    return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  await new Promise((r) => setTimeout(r, 400));
-  const rand = seededRandom(id);
-  const statuses = ["valid", "used", "cancelled"] as const;
-  // bias: 80% valid
-  const r = rand();
-  const status = r < 0.8 ? "valid" : r < 0.92 ? "used" : "cancelled";
+  const sb = getSupabaseAdmin();
+  if (!sb) {
+    return NextResponse.json(
+      { error: "Database not configured" },
+      { status: 500 }
+    );
+  }
 
-  return NextResponse.json({
-    ticket: {
-      consignment: id,
-      fromCode: parts[1],
-      toCode: parts[2],
-      passengerName: "Travelling Passenger",
-      seat: `${1 + Math.floor(rand() * 8)}${["A", "B", "C", "D"][Math.floor(rand() * 4)]}`,
-      seatClass: rand() > 0.5 ? "VIP" : "Regular",
-      agencyName: ["Finexs Voyages", "Musango Express", "Vatican Express"][Math.floor(rand() * 3)],
-      date: new Date(Date.now() + 86400_000).toISOString().slice(0, 10),
-      time: ["06:00", "08:30", "11:00", "14:00", "17:30"][Math.floor(rand() * 5)],
-      amount: 4000 + Math.floor(rand() * 9000),
-      status,
-    },
-  });
+  try {
+    const row = await fetchTicket(sb, id);
+    if (!row) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+    const trip = row.trip;
+    const route = trip?.route;
+    const fromCity = route?.from_city;
+    const toCity = route?.to_city;
+    const dropOff =
+      row.drop_off ?? trip?.drop_off?.name ?? null;
+
+    return NextResponse.json({
+      ticket: {
+        consignment: row.consignment,
+        fromCode: fromCity?.code,
+        toCode: toCity?.code,
+        fromName: fromCity?.name,
+        toName: toCity?.name,
+        passengerName: row.passenger_name,
+        passengerEmail: row.passenger_email,
+        seat: row.seat,
+        seatClass: row.seat_class,
+        agencyName: trip?.agency?.name,
+        date: trip?.date,
+        time: trip?.time,
+        amount: row.amount,
+        status: row.status,
+        dropOff,
+      },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "lookup failed";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

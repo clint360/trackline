@@ -12,13 +12,16 @@ import {
   Lock,
   MapPin,
   Pencil,
+  Phone,
   Plus,
+  Receipt,
   Search,
   TicketIcon,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { SeatLayoutBuilder } from "./SeatLayoutBuilder";
@@ -30,15 +33,46 @@ type Persist = (next: Store) => void;
 
 /* ---------- Overview ---------- */
 
+function fmtFcfaCompact(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
+  return String(n);
+}
+
 export function Overview({ store }: { store: Store }) {
+  // Revenue = sum of valid bookings (cancelled/used excluded from "live" revenue;
+  // we show used as "completed" elsewhere)
+  const validBookings = store.bookings.filter((b) => b.status !== "cancelled");
+  const totalRevenue = validBookings.reduce((acc, b) => acc + b.amount, 0);
+
+  // Last 7 days bookings, for sparkline
+  const today = new Date();
+  const sparkData = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (6 - i));
+    const iso = d.toISOString().slice(0, 10);
+    const dayBookings = store.bookings.filter(
+      (b) => (b.createdAt ?? "").slice(0, 10) === iso && b.status !== "cancelled"
+    );
+    return {
+      iso,
+      count: dayBookings.length,
+      revenue: dayBookings.reduce((a, b) => a + b.amount, 0),
+    };
+  });
+  const peak = Math.max(1, ...sparkData.map((d) => d.revenue));
+
   const stats = [
-    { label: "Cities", value: store.cities.filter((c) => c.active).length, icon: MapPin },
+    {
+      label: "Cities",
+      value: store.cities.filter((c) => c.active).length,
+      icon: MapPin,
+    },
     { label: "Agencies", value: store.agencies.length, icon: Building2 },
-    { label: "Templates", value: store.busTemplates.length, icon: Bus },
     { label: "Routes", value: store.routes.length, icon: GitBranch },
-    { label: "Schedules", value: store.schedules.length, icon: CalendarRange },
     { label: "Trips", value: store.trips.length, icon: TicketIcon },
-    { label: "Bookings", value: store.bookings.length, icon: Check },
+    { label: "Templates", value: store.busTemplates.length, icon: Bus },
+    { label: "Schedules", value: store.schedules.length, icon: CalendarRange },
   ];
 
   return (
@@ -47,12 +81,111 @@ export function Overview({ store }: { store: Store }) {
         <p className="text-xs uppercase tracking-widest text-ink-400 font-semibold">
           Dashboard
         </p>
-        <h2 className="text-2xl font-bold text-ink-900 mt-1">Welcome back, Operator</h2>
+        <h2 className="text-2xl font-bold text-ink-900 mt-1">
+          Welcome back, Operator
+        </h2>
         <p className="text-ink-500 text-sm mt-1">
-          Manage cities, templates, routes and trips across the network.
+          Network-wide performance and quick stats.
         </p>
       </header>
 
+      {/* Hero: revenue + bookings cards */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        {/* Revenue card */}
+        <div className="card p-5 sm:p-6 relative overflow-hidden">
+          <div className="absolute inset-0 -z-10 bg-gradient-to-br from-brand-50 via-white to-white" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-ink-400 font-semibold">
+                Total revenue
+              </p>
+              <p className="mt-2 text-3xl font-bold text-ink-900 tracking-tight font-mono">
+                {fmtFcfaCompact(totalRevenue)}
+              </p>
+              <p className="text-[11px] text-ink-500 mt-0.5">
+                {formatFCFA(totalRevenue)} · {validBookings.length} bookings
+              </p>
+            </div>
+            <div className="h-10 w-10 rounded-2xl bg-brand-gradient text-white flex items-center justify-center shadow-glow">
+              <TicketIcon className="h-4 w-4" />
+            </div>
+          </div>
+
+          {/* Sparkline */}
+          <div className="mt-5">
+            <div className="flex items-end gap-1 h-12">
+              {sparkData.map((d, i) => {
+                const h = Math.max(4, (d.revenue / peak) * 48);
+                const isToday = i === sparkData.length - 1;
+                return (
+                  <div
+                    key={d.iso}
+                    className="flex-1 flex flex-col items-center gap-1"
+                    title={`${d.iso}: ${d.count} bookings · ${formatFCFA(d.revenue)}`}
+                  >
+                    <div
+                      className={cn(
+                        "w-full rounded-md transition-colors",
+                        isToday ? "bg-brand-600" : "bg-brand-200"
+                      )}
+                      style={{ height: `${h}px` }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-1.5 flex justify-between text-[10px] text-ink-400 font-medium">
+              <span>7d ago</span>
+              <span>Today</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bookings card */}
+        <div className="card p-5 sm:p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-ink-400 font-semibold">
+                Bookings
+              </p>
+              <p className="mt-2 text-3xl font-bold text-ink-900 tracking-tight">
+                {validBookings.length}
+              </p>
+              <p className="text-[11px] text-ink-500 mt-0.5">
+                {sparkData[sparkData.length - 1].count} today ·{" "}
+                {sparkData.reduce((a, d) => a + d.count, 0)} this week
+              </p>
+            </div>
+            <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Check className="h-4 w-4" />
+            </div>
+          </div>
+
+          {/* Recent bookings preview */}
+          <div className="mt-5 space-y-1.5">
+            {store.bookings.slice(-4).reverse().map((b) => (
+              <div
+                key={b.consignment}
+                className="flex items-center justify-between text-xs"
+              >
+                <span className="font-mono text-ink-700 truncate">
+                  {b.consignment}
+                </span>
+                <span className="font-semibold text-ink-900 font-mono">
+                  {formatFCFA(b.amount)}
+                </span>
+              </div>
+            ))}
+            {store.bookings.length === 0 && (
+              <p className="text-xs text-ink-400 italic">
+                No bookings yet — once a passenger pays, they'll show here.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Network stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {stats.map((s, i) => {
           const Icon = s.icon;
@@ -76,26 +209,6 @@ export function Overview({ store }: { store: Store }) {
             </motion.div>
           );
         })}
-      </div>
-
-      <div className="card p-6">
-        <h3 className="font-semibold text-ink-900">Quick checklist</h3>
-        <ul className="mt-3 space-y-2 text-sm">
-          {[
-            "Add or activate cities you serve",
-            "Build at least one VIP and one Regular bus template",
-            "Define routes between active cities",
-            "Schedule daily departure times",
-            "Publish trips with VIP / Regular pricing",
-          ].map((step, i) => (
-            <li key={i} className="flex items-start gap-2 text-ink-700">
-              <span className="mt-0.5 h-5 w-5 rounded-full bg-brand-50 text-brand-600 text-[10px] font-bold flex items-center justify-center shrink-0">
-                {i + 1}
-              </span>
-              {step}
-            </li>
-          ))}
-        </ul>
       </div>
     </div>
   );
@@ -478,7 +591,28 @@ export function AgenciesSection({
   const tripCountFor = (agencyId: string) =>
     store.trips.filter((t) => t.agencyId === agencyId).length;
 
-  const save = (data: Partial<Agency>) => {
+  const uploadImageIfDataUrl = async (
+    agencyId: string,
+    image?: string
+  ): Promise<string | undefined> => {
+    if (!image) return undefined;
+    if (!image.startsWith("data:")) return image; // already a remote URL
+    try {
+      const res = await fetch("/api/agencies/upload-image", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ agencyId, dataUrl: image }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error ?? "Upload failed");
+      return j.publicUrl as string;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Image upload failed");
+      return undefined;
+    }
+  };
+
+  const save = async (data: Partial<Agency>) => {
     const name = data.name?.trim();
     if (!name) {
       toast.error("Name is required");
@@ -494,24 +628,33 @@ export function AgenciesSection({
     }
 
     if (editing) {
+      const imageUrl = await uploadImageIfDataUrl(editing.id, data.imageUrl);
       persist({
         ...store,
         agencies: store.agencies.map((a) =>
           a.id === editing.id
-            ? { ...a, name, logoColor: data.logoColor ?? a.logoColor }
+            ? {
+                ...a,
+                name,
+                logoColor: data.logoColor ?? a.logoColor,
+                imageUrl: imageUrl ?? a.imageUrl,
+              }
             : a
         ),
       });
       toast.success("Agency updated");
     } else {
+      const id = `a-${Date.now()}`;
+      const imageUrl = await uploadImageIfDataUrl(id, data.imageUrl);
       persist({
         ...store,
         agencies: [
           ...store.agencies,
           {
-            id: `a-${Date.now()}`,
+            id,
             name,
             logoColor: data.logoColor ?? AGENCY_GRADIENTS[0].value,
+            imageUrl,
           },
         ],
       });
@@ -588,16 +731,26 @@ export function AgenciesSection({
                       <div className="flex items-center gap-2.5">
                         <div
                           className={cn(
-                            "h-8 w-8 rounded-xl text-white text-xs font-bold flex items-center justify-center shadow-soft bg-gradient-to-br",
-                            a.logoColor
+                            "h-8 w-8 rounded-xl overflow-hidden text-white text-xs font-bold flex items-center justify-center shadow-soft",
+                            !a.imageUrl && "bg-gradient-to-br",
+                            !a.imageUrl && a.logoColor
                           )}
                         >
-                          {a.name
-                            .split(" ")
-                            .map((w) => w[0])
-                            .slice(0, 2)
-                            .join("")
-                            .toUpperCase()}
+                          {a.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={a.imageUrl}
+                              alt={a.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            a.name
+                              .split(" ")
+                              .map((w) => w[0])
+                              .slice(0, 2)
+                              .join("")
+                              .toUpperCase()
+                          )}
                         </div>
                         <span className="font-medium text-ink-900">
                           {a.name}
@@ -685,18 +838,39 @@ function AgencyForm({
   onSubmit: (d: Partial<Agency>) => void;
   onCancel: () => void;
 }) {
+  const toast = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [logoColor, setLogoColor] = useState(
     initial?.logoColor ?? AGENCY_GRADIENTS[0].value
   );
+  const [imageUrl, setImageUrl] = useState<string | undefined>(initial?.imageUrl);
   const [err, setErr] = useState<{ name?: string }>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const onPickFile = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file");
+      return;
+    }
+    if (file.size > 1.5 * 1024 * 1024) {
+      toast.error("Image must be under 1.5 MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      if (typeof dataUrl === "string") setImageUrl(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const submit = () => {
     const e: typeof err = {};
     if (name.trim().length < 2) e.name = "Too short";
     setErr(e);
     if (Object.keys(e).length) return;
-    onSubmit({ name: name.trim(), logoColor });
+    onSubmit({ name: name.trim(), logoColor, imageUrl });
   };
 
   const initials =
@@ -713,17 +887,64 @@ function AgencyForm({
       <div className="flex items-center gap-3">
         <div
           className={cn(
-            "h-14 w-14 rounded-2xl text-white text-base font-bold flex items-center justify-center shadow-glow bg-gradient-to-br",
-            logoColor
+            "h-14 w-14 rounded-2xl overflow-hidden text-white text-base font-bold flex items-center justify-center shadow-glow",
+            !imageUrl && "bg-gradient-to-br",
+            !imageUrl && logoColor
           )}
         >
-          {initials}
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt={name}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            initials
+          )}
         </div>
         <div className="min-w-0">
           <p className="text-xs text-ink-500">Live preview</p>
           <p className="font-semibold text-ink-900 truncate">
             {name.trim() || "Agency name"}
           </p>
+        </div>
+      </div>
+
+      {/* Image upload / clear */}
+      <div>
+        <label className="text-xs font-semibold text-ink-700">
+          Profile picture
+        </label>
+        <p className="text-[11px] text-ink-500 mt-0.5">
+          Optional. PNG/JPG, square works best, under 1.5 MB.
+        </p>
+        <div className="mt-2 flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="btn-secondary text-xs h-9 px-3"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {imageUrl ? "Replace image" : "Upload image"}
+          </button>
+          {imageUrl && (
+            <button
+              type="button"
+              onClick={() => setImageUrl(undefined)}
+              className="btn-ghost text-xs h-9 px-3 text-rose-600 hover:bg-rose-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove
+            </button>
+          )}
         </div>
       </div>
 
@@ -1213,6 +1434,394 @@ export function SchedulesSection({ store, persist }: { store: Store; persist: Pe
   );
 }
 
+/* ---------- Bookings ---------- */
+
+export function BookingsSection({ store }: { store: Store }) {
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "valid" | "used" | "cancelled"
+  >("all");
+  const [agencyFilter, setAgencyFilter] = useState<string>("all");
+
+  // Hydrate context: trip → agency, route + cities, drop-off label
+  const enriched = useMemo(() => {
+    return store.bookings.map((b) => {
+      const trip = store.trips.find((t) => t.id === b.tripId);
+      const agency = trip
+        ? store.agencies.find((a) => a.id === trip.agencyId)
+        : undefined;
+      const route = trip
+        ? store.routes.find((r) => r.id === trip.routeId)
+        : undefined;
+      const fromCity = route
+        ? store.cities.find((c) => c.id === route.fromCityId)
+        : undefined;
+      const toCity = route
+        ? store.cities.find((c) => c.id === route.toCityId)
+        : undefined;
+      return {
+        booking: b,
+        trip,
+        agency,
+        fromCity,
+        toCity,
+      };
+    });
+  }, [store.bookings, store.trips, store.agencies, store.routes, store.cities]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return enriched.filter((row) => {
+      const b = row.booking;
+      if (statusFilter !== "all" && b.status !== statusFilter) return false;
+      if (
+        agencyFilter !== "all" &&
+        row.trip &&
+        row.trip.agencyId !== agencyFilter
+      )
+        return false;
+      if (!q) return true;
+      const haystack = [
+        b.consignment,
+        b.passenger.fullName,
+        b.passenger.phone,
+        b.passenger.email ?? "",
+        b.seat,
+        row.fromCity?.code ?? "",
+        row.toCity?.code ?? "",
+        row.agency?.name ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [enriched, query, statusFilter, agencyFilter]);
+
+  // Stats
+  const totalRevenue = filtered
+    .filter((r) => r.booking.status !== "cancelled")
+    .reduce((acc, r) => acc + r.booking.amount, 0);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayCount = filtered.filter(
+    (r) => (r.booking.createdAt ?? "").slice(0, 10) === todayIso
+  ).length;
+
+  return (
+    <SectionWrap
+      title="Bookings"
+      subtitle="Every ticket sold across the network. Updates live."
+    >
+      {/* Stat strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatPill label="Total" value={filtered.length} icon={Receipt} />
+        <StatPill label="Today" value={todayCount} icon={CalendarRange} />
+        <StatPill
+          label="Revenue (filtered)"
+          value={formatFCFA(totalRevenue)}
+          icon={TicketIcon}
+          mono
+        />
+        <StatPill
+          label="Cancelled"
+          value={filtered.filter((r) => r.booking.status === "cancelled").length}
+          icon={X}
+          tone="rose"
+        />
+      </div>
+
+      {/* Filters */}
+      <div className="card p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search consignment, name, phone, route…"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-ink-200 text-sm outline-none focus:border-brand-400 focus:shadow-ring"
+            />
+          </div>
+          <Select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            className="sm:max-w-[180px]"
+          >
+            <option value="all">All statuses</option>
+            <option value="valid">Valid</option>
+            <option value="used">Used</option>
+            <option value="cancelled">Cancelled</option>
+          </Select>
+          <Select
+            value={agencyFilter}
+            onChange={(e) => setAgencyFilter(e.target.value)}
+            className="sm:max-w-[200px]"
+          >
+            <option value="all">All agencies</option>
+            {store.agencies.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        {filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="h-12 w-12 mx-auto rounded-full bg-ink-50 text-ink-300 flex items-center justify-center">
+              <Receipt className="h-5 w-5" />
+            </div>
+            <p className="text-ink-700 font-semibold mt-3">
+              {store.bookings.length === 0
+                ? "No bookings yet"
+                : "No bookings match your filters"}
+            </p>
+            <p className="text-xs text-ink-500 mt-1">
+              {store.bookings.length === 0
+                ? "When passengers pay, their tickets will appear here in real time."
+                : "Try widening the search or clearing filters."}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-ink-50/60 text-ink-500 text-xs uppercase tracking-wider">
+                <tr>
+                  <th className="text-left px-4 py-2.5 font-medium">Consignment</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Passenger</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Route</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Agency</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Trip</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Seat</th>
+                  <th className="text-right px-4 py-2.5 font-medium">Amount</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Method</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Status</th>
+                  <th className="text-right px-4 py-2.5 font-medium">Booked</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(({ booking: b, trip, agency, fromCity, toCity }) => (
+                  <tr
+                    key={b.consignment}
+                    className="border-t border-ink-100 hover:bg-ink-50/40"
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-ink-700 whitespace-nowrap">
+                      <a
+                        href={`/ticket/${b.consignment}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:text-brand-700 hover:underline"
+                      >
+                        {b.consignment}
+                      </a>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="leading-tight">
+                        <p className="font-medium text-ink-900 truncate max-w-[200px]">
+                          {b.passenger.fullName}
+                        </p>
+                        <p className="text-[11px] text-ink-500 flex items-center gap-1 mt-0.5">
+                          <Phone className="h-2.5 w-2.5" />
+                          <span className="font-mono">{b.passenger.phone}</span>
+                        </p>
+                        {b.passenger.email && (
+                          <p className="text-[11px] text-ink-400 truncate max-w-[200px]">
+                            {b.passenger.email}
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {fromCity && toCity ? (
+                        <span className="font-medium text-ink-700">
+                          {fromCity.code} → {toCity.code}
+                        </span>
+                      ) : (
+                        <span className="text-ink-400 italic text-xs">
+                          unknown
+                        </span>
+                      )}
+                      {b.dropOff && (
+                        <p className="text-[10px] text-ink-500 truncate max-w-[160px]">
+                          {b.dropOff}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {agency ? (
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={cn(
+                              "h-6 w-6 rounded-md overflow-hidden text-white text-[9px] font-bold flex items-center justify-center",
+                              !agency.imageUrl && "bg-gradient-to-br",
+                              !agency.imageUrl && agency.logoColor
+                            )}
+                          >
+                            {agency.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={agency.imageUrl}
+                                alt={agency.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              agency.name
+                                .split(" ")
+                                .map((w) => w[0])
+                                .slice(0, 2)
+                                .join("")
+                                .toUpperCase()
+                            )}
+                          </div>
+                          <span className="text-xs text-ink-700 truncate max-w-[120px]">
+                            {agency.name}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-ink-400 italic text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-ink-700 whitespace-nowrap">
+                      {trip ? (
+                        <>
+                          <span className="font-medium">{formatDate(trip.date)}</span>
+                          <span className="text-ink-400"> · </span>
+                          <span className="font-mono">{trip.time}</span>
+                        </>
+                      ) : (
+                        <span className="text-ink-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-xs font-bold text-brand-700">
+                        {b.seat}
+                      </span>
+                      <span
+                        className={cn(
+                          "ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
+                          b.seatClass === "VIP"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-ink-100 text-ink-700"
+                        )}
+                      >
+                        {b.seatClass}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-semibold text-ink-900 whitespace-nowrap">
+                      {formatFCFA(b.amount)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border",
+                          b.paymentMethod === "MTN"
+                            ? "border-amber-300 bg-amber-50 text-amber-800"
+                            : "border-orange-300 bg-orange-50 text-orange-800"
+                        )}
+                      >
+                        {b.paymentMethod === "MTN" ? "MTN MoMo" : "Orange Money"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={b.status} />
+                    </td>
+                    <td className="px-4 py-3 text-right text-[11px] text-ink-500 font-mono whitespace-nowrap">
+                      {fmtBookingTime(b.createdAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </SectionWrap>
+  );
+}
+
+function StatPill({
+  label,
+  value,
+  icon: Icon,
+  mono,
+  tone = "brand",
+}: {
+  label: string;
+  value: number | string;
+  icon: React.ComponentType<{ className?: string }>;
+  mono?: boolean;
+  tone?: "brand" | "rose";
+}) {
+  return (
+    <div className="card p-3 flex items-center gap-3">
+      <div
+        className={cn(
+          "h-9 w-9 rounded-xl flex items-center justify-center",
+          tone === "brand"
+            ? "bg-brand-50 text-brand-600"
+            : "bg-rose-50 text-rose-600"
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-widest text-ink-400 font-semibold truncate">
+          {label}
+        </p>
+        <p
+          className={cn(
+            "text-lg font-bold text-ink-900 leading-tight truncate",
+            mono && "font-mono"
+          )}
+        >
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: "valid" | "used" | "cancelled" }) {
+  const styles = {
+    valid: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    used: "border-ink-200 bg-ink-50 text-ink-600",
+    cancelled: "border-rose-200 bg-rose-50 text-rose-700",
+  } as const;
+  const dots = {
+    valid: "bg-emerald-500",
+    used: "bg-ink-400",
+    cancelled: "bg-rose-500",
+  } as const;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+        styles[status]
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", dots[status])} />
+      {status}
+    </span>
+  );
+}
+
+function fmtBookingTime(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  if (diff < 60_000) return "just now";
+  if (diff < 60 * 60_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 24 * 60 * 60_000) return `${Math.floor(diff / (60 * 60_000))}h ago`;
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /* ---------- Trips ---------- */
 
 export function TripsSection({ store, persist }: { store: Store; persist: Persist }) {
@@ -1400,16 +2009,26 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
                         <div className="flex items-center gap-2">
                           <div
                             className={cn(
-                              "h-7 w-7 rounded-lg text-white text-[10px] font-bold flex items-center justify-center bg-gradient-to-br",
-                              agency.logoColor
+                              "h-7 w-7 rounded-lg overflow-hidden text-white text-[10px] font-bold flex items-center justify-center",
+                              !agency.imageUrl && "bg-gradient-to-br",
+                              !agency.imageUrl && agency.logoColor
                             )}
                           >
-                            {agency.name
-                              .split(" ")
-                              .map((w) => w[0])
-                              .slice(0, 2)
-                              .join("")
-                              .toUpperCase()}
+                            {agency.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={agency.imageUrl}
+                                alt={agency.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              agency.name
+                                .split(" ")
+                                .map((w) => w[0])
+                                .slice(0, 2)
+                                .join("")
+                                .toUpperCase()
+                            )}
                           </div>
                           <span className="text-ink-700 truncate max-w-[140px]">
                             {agency.name}

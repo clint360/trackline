@@ -107,6 +107,11 @@ const T = {
     fr: "Utilisé pour la confirmation. Format Cameroun, ex. 6XX XXX XXX.",
   },
   continue_to_payment: { en: "Continue to payment", fr: "Continuer vers le paiement" },
+  email_optional: { en: "Email (optional)", fr: "Email (facultatif)" },
+  email_hint: {
+    en: "We'll send a digital copy of your ticket here.",
+    fr: "Nous enverrons une copie de votre billet à cette adresse.",
+  },
 
   // Step 5 — payment
   payment: { en: "Payment", fr: "Paiement" },
@@ -128,6 +133,40 @@ const T = {
   payment_declined: { en: "Payment declined", fr: "Paiement refusé" },
   payment_confirmed: { en: "Payment confirmed", fr: "Paiement confirmé" },
   choose_payment: { en: "Choose a payment method", fr: "Choisissez un mode de paiement" },
+
+  // Fapshi flow
+  follow_instructions: {
+    en: "Check your phone",
+    fr: "Vérifiez votre téléphone",
+  },
+  follow_instructions_body: {
+    en: "We've sent a payment request to your mobile money. Approve the prompt on your phone with your secret code to complete the payment.",
+    fr: "Nous avons envoyé une demande de paiement sur votre mobile money. Approuvez la demande sur votre téléphone avec votre code secret pour finaliser.",
+  },
+  do_not_close: {
+    en: "Don't close this page — we're waiting for confirmation.",
+    fr: "Ne fermez pas cette page — nous attendons la confirmation.",
+  },
+  amount_to_pay: { en: "Amount to pay", fr: "Montant à payer" },
+  ref: { en: "Reference", fr: "Référence" },
+  status_checking: { en: "Checking your transaction…", fr: "Vérification de votre transaction…" },
+  status_pending: { en: "Waiting for you to approve on your phone…", fr: "En attente de votre approbation sur le téléphone…" },
+  status_almost: { en: "Almost there…", fr: "Presque terminé…" },
+  status_confirming: { en: "Confirming with the operator…", fr: "Confirmation auprès de l’opérateur…" },
+  payment_failed_title: { en: "Payment failed", fr: "Paiement échoué" },
+  payment_failed_body: {
+    en: "Your payment couldn't be completed. You can try again or use a different number.",
+    fr: "Votre paiement n'a pas pu être finalisé. Réessayez ou utilisez un autre numéro.",
+  },
+  payment_expired: {
+    en: "The payment request expired. Please try again.",
+    fr: "La demande de paiement a expiré. Veuillez réessayer.",
+  },
+  try_again: { en: "Try again", fr: "Réessayer" },
+  resume_payment: {
+    en: "Resuming your previous payment…",
+    fr: "Reprise de votre paiement précédent…",
+  },
 
   // Step 6 — ticket
   booking_confirmed: { en: "Booking confirmed", fr: "Réservation confirmée" },
@@ -163,6 +202,31 @@ const T = {
 
   // Operator nav
   operator_dashboard: { en: "Operator dashboard →", fr: "Espace opérateur →" },
+
+  // Check ticket modal
+  check_ticket: { en: "Check ticket", fr: "Vérifier le billet" },
+  check_ticket_title: {
+    en: "Find your ticket",
+    fr: "Retrouvez votre billet",
+  },
+  check_ticket_body: {
+    en: "Enter the consignment number from your boarding pass.",
+    fr: "Entrez le numéro de référence figurant sur votre billet.",
+  },
+  check_ticket_hint: {
+    en: "Format: TRP-XXX-YYY-XXXXXXXX",
+    fr: "Format : TRP-XXX-YYY-XXXXXXXX",
+  },
+  ticket_lookup_required: {
+    en: "Enter a consignment number",
+    fr: "Saisissez un numéro de référence",
+  },
+  ticket_not_found: {
+    en: "We couldn't find that ticket. Double-check the number.",
+    fr: "Billet introuvable. Vérifiez le numéro.",
+  },
+  find_ticket: { en: "Find my ticket", fr: "Trouver mon billet" },
+  checking: { en: "Checking…", fr: "Vérification…" },
 };
 
 type Key = keyof typeof T;

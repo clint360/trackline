@@ -1,12 +1,13 @@
 "use client";
 
-import { Bell, LogOut, Menu, Search } from "lucide-react";
+import { LogOut, Menu, Search } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
   SIDEBAR_ITEMS,
   sectionFromPathname,
   type DashSection,
 } from "./Sidebar";
+import { NotificationsBell } from "./NotificationsBell";
 
 const TITLES: Record<DashSection, { title: string; subtitle: string }> = {
   overview: { title: "Overview", subtitle: "Network at a glance" },
@@ -16,6 +17,7 @@ const TITLES: Record<DashSection, { title: string; subtitle: string }> = {
   routes: { title: "Routes", subtitle: "City-to-city connections" },
   schedules: { title: "Schedules", subtitle: "Standard departure times" },
   trips: { title: "Trips", subtitle: "Published trips and pricing" },
+  bookings: { title: "Bookings", subtitle: "Tickets sold across the network" },
 };
 
 export function TopBar({
@@ -65,13 +67,7 @@ export function TopBar({
         </div>
 
         {/* Bell */}
-        <button
-          className="relative p-2 rounded-xl text-ink-600 hover:bg-ink-100"
-          aria-label="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
-        </button>
+        <NotificationsBell />
 
         {/* Avatar */}
         <div className="flex items-center gap-2.5 pl-2 sm:pl-3 sm:border-l sm:border-ink-100">

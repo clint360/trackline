@@ -28,6 +28,8 @@ export default function TicketLookupPage({
             passengerName: j.ticket.passengerName,
             fromCode: j.ticket.fromCode,
             toCode: j.ticket.toCode,
+            fromName: j.ticket.fromName,
+            toName: j.ticket.toName,
             agencyName: j.ticket.agencyName,
             date: j.ticket.date,
             time: j.ticket.time,
@@ -35,6 +37,7 @@ export default function TicketLookupPage({
             seatClass: j.ticket.seatClass,
             amount: j.ticket.amount,
             status: j.ticket.status,
+            dropOff: j.ticket.dropOff ?? undefined,
           });
         }
       } catch (e: any) {

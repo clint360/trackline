@@ -15,9 +15,10 @@ html,
 body {
   background-color: rgb(var(--background));
   color: rgb(var(--foreground));
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-feature-settings: "ss01", "ss02", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
 }
 
 @layer utilities {
@@ -103,5 +104,14 @@ body {
     );
     background-size: 200% 100%;
     animation: shimmer 1.6s linear infinite;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
   }
 }

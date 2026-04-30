@@ -22,7 +22,8 @@ export interface City {
 export interface Agency {
   id: string;
   name: string;
-  logoColor: string; // gradient hex pair
+  logoColor: string; // gradient classes e.g. "from-indigo-500 to-violet-500"
+  imageUrl?: string; // profile picture / logo (data URL or remote URL)
 }
 
 export interface BusTemplate {
@@ -72,7 +73,14 @@ export interface SearchedTrip extends Trip {
 export interface PassengerInfo {
   fullName: string;
   phone: string;
+  email?: string;
 }
+
+export type PaymentStatus =
+  | "PENDING"
+  | "SUCCESSFUL"
+  | "FAILED"
+  | "EXPIRED";
 
 export interface Booking {
   consignment: string;
@@ -85,4 +93,5 @@ export interface Booking {
   status: "valid" | "used" | "cancelled";
   dropOff?: string; // resolved drop-off label
   createdAt: string;
+  paymentTransId?: string; // Fapshi transId for reconciliation
 }

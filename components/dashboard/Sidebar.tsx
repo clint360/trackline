@@ -11,6 +11,7 @@ import {
   GitBranch,
   LayoutDashboard,
   MapPin,
+  Receipt,
   TicketIcon,
   X,
 } from "lucide-react";
@@ -22,7 +23,8 @@ export type DashSection =
   | "templates"
   | "routes"
   | "schedules"
-  | "trips";
+  | "trips"
+  | "bookings";
 
 interface Item {
   key: DashSection;
@@ -33,12 +35,13 @@ interface Item {
 
 export const SIDEBAR_ITEMS: Item[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard, href: "/dashboard/overview" },
-  { key: "cities", label: "Cities", icon: MapPin, href: "/dashboard/cities" },
-  { key: "agencies", label: "Agencies", icon: Building2, href: "/dashboard/agencies" },
-  { key: "templates", label: "Bus Templates", icon: Bus, href: "/dashboard/templates" },
+  { key: "bookings", label: "Bookings", icon: Receipt, href: "/dashboard/bookings" },
+  { key: "trips", label: "Trips", icon: TicketIcon, href: "/dashboard/trips" },
   { key: "routes", label: "Routes", icon: GitBranch, href: "/dashboard/routes" },
   { key: "schedules", label: "Schedules", icon: CalendarRange, href: "/dashboard/schedules" },
-  { key: "trips", label: "Trips", icon: TicketIcon, href: "/dashboard/trips" },
+  { key: "templates", label: "Bus Templates", icon: Bus, href: "/dashboard/templates" },
+  { key: "agencies", label: "Agencies", icon: Building2, href: "/dashboard/agencies" },
+  { key: "cities", label: "Cities", icon: MapPin, href: "/dashboard/cities" },
 ];
 
 export function sectionFromPathname(pathname: string | null): DashSection {

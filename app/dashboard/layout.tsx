@@ -54,21 +54,20 @@ export default function DashboardLayout({
               onClose={() => setMobileOpen(false)}
             />
 
-            <div className="flex-1 min-w-0 flex flex-col">
-              <TopBar
-                onMenu={() => setMobileOpen(true)}
-                onLogout={() => {
-                  localStorage.removeItem(LOCAL_KEY);
-                  setAuthed(false);
-                }}
-              />
-
-              <DashboardStoreProvider>
+            <DashboardStoreProvider>
+              <div className="flex-1 min-w-0 flex flex-col">
+                <TopBar
+                  onMenu={() => setMobileOpen(true)}
+                  onLogout={() => {
+                    localStorage.removeItem(LOCAL_KEY);
+                    setAuthed(false);
+                  }}
+                />
                 <div className="flex-1 px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
                   <div className="max-w-6xl mx-auto">{children}</div>
                 </div>
-              </DashboardStoreProvider>
-            </div>
+              </div>
+            </DashboardStoreProvider>
           </motion.div>
         ) : (
           <AdminLogin
