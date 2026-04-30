@@ -170,7 +170,7 @@ export function BookingFlow() {
                 }}
               />
             )}
-            {step === 3 && (
+            {step === 3 && state.seat && state.trip && state.seatClass && (
               <PassengerStep
                 initial={state.passenger}
                 onBack={goBack}
@@ -196,6 +196,13 @@ export function BookingFlow() {
               )}
             {step === 5 && state.ticket && (
               <TicketStep ticket={state.ticket} onRestart={restart} />
+            )}
+            {/* Fallback: if step requires data that’s missing, auto-rewind */}
+            {step === 3 && !(state.seat && state.trip && state.seatClass) && (
+              <div className="card p-8 text-center">
+                <p className="text-ink-600 font-medium">Please select a seat first</p>
+                <button onClick={goBack} className="btn-primary mt-4 text-sm">Go back</button>
+              </div>
             )}
           </motion.div>
         </AnimatePresence>

@@ -62,7 +62,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+      <div className="fixed top-14 right-4 z-[100] flex flex-col gap-1.5 pointer-events-none">
         <AnimatePresence>
           {items.map((t) => (
             <motion.div
@@ -72,7 +72,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               exit={{ opacity: 0, x: 40, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
               className={cn(
-                "pointer-events-auto flex items-start gap-3 min-w-[280px] max-w-[360px] rounded-2xl border px-4 py-3 shadow-card glass",
+                "pointer-events-auto flex items-start gap-2 min-w-[220px] max-w-[320px] rounded-xl border px-3 py-2 shadow-card glass",
                 t.kind === "success" && "border-emerald-200",
                 t.kind === "error" && "border-rose-200",
                 t.kind === "info" && "border-ink-200"
@@ -80,13 +80,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             >
               <div className="mt-0.5">
                 {t.kind === "success" && (
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 )}
                 {t.kind === "error" && (
-                  <AlertCircle className="h-5 w-5 text-rose-500" />
+                  <AlertCircle className="h-4 w-4 text-rose-500" />
                 )}
                 {t.kind === "info" && (
-                  <Info className="h-5 w-5 text-brand-500" />
+                  <Info className="h-4 w-4 text-brand-500" />
                 )}
               </div>
               <p className="text-sm text-ink-800 flex-1">{t.message}</p>

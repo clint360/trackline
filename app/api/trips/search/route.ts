@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { searchTrips } from "@/lib/supabase/queries";
+import { isTripExpired } from "@/lib/utils";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -34,9 +35,10 @@ export async function GET(req: Request) {
   try {
     console.log("[search] calling searchTrips...");
     const trips = await searchTrips(sb, { fromCityId, toCityId, date });
-    console.log("[search] success, trips count:", trips.length);
+    const activeTrips = trips.filter((t) => !isTripExpired(t.date, t.time));
+    console.log("[search] success, trips count:", trips.length, "active:", activeTrips.length);
     return NextResponse.json(
-      { trips },
+      { trips: activeTrips },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {

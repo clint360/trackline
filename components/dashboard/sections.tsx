@@ -4,8 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bus,
   Building2,
+  CalendarDays,
   CalendarRange,
   Check,
+  ChevronLeft,
   ChevronRight,
   Edit3,
   GitBranch,
@@ -19,13 +21,14 @@ import {
   TicketIcon,
   Trash2,
   Upload,
+  Users,
   X,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { SeatLayoutBuilder } from "./SeatLayoutBuilder";
-import { cn, formatDate, formatFCFA } from "@/lib/utils";
+import { cn, formatDate, formatFCFA, isTripExpired } from "@/lib/utils";
 import type { Store } from "@/lib/store";
 import type { Agency, BusTemplate, City, DropOff, Route, Schedule, SeatLayout, SeatClass, Trip } from "@/lib/types";
 
@@ -1826,7 +1829,7 @@ function fmtBookingTime(iso?: string) {
 
 export function TripsSection({ store, persist }: { store: Store; persist: Persist }) {
   const toast = useToast();
-  const [mode, setMode] = useState<"closed" | "new" | { editId: string }>("closed");
+  const [mode, setMode] = useState<"closed" | "new" | "bulk" | { editId: string }>("closed");
   const [agencyId, setAgencyId] = useState("");
   const [routeId, setRouteId] = useState("");
   const [busTemplateId, setBusTemplateId] = useState("");
@@ -1836,6 +1839,25 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
   const [priceVip, setPriceVip] = useState("");
   const [dropOffId, setDropOffId] = useState("");
   const [takenSeats, setTakenSeats] = useState<string[]>([]);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Pagination & expired filter
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showExpired, setShowExpired] = useState(false);
+  const pageSize = 10;
+
+  // Bulk create state
+  const [bulkAgencyId, setBulkAgencyId] = useState("");
+  const [bulkRouteId, setBulkRouteId] = useState("");
+  const [bulkBusTemplateId, setBulkBusTemplateId] = useState("");
+  const [bulkTime, setBulkTime] = useState("");
+  const [bulkPriceRegular, setBulkPriceRegular] = useState("");
+  const [bulkPriceVip, setBulkPriceVip] = useState("");
+  const [bulkDropOffId, setBulkDropOffId] = useState("");
+  const [bulkStartDate, setBulkStartDate] = useState("");
+  const [bulkEndDate, setBulkEndDate] = useState("");
 
   const drawerOpen = mode !== "closed";
   const isEditing = typeof mode === "object";
@@ -1864,6 +1886,26 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
     [busTemplateId, store.busTemplates]
   );
 
+  const bulkToCity = useMemo(() => {
+    const r = store.routes.find((x) => x.id === bulkRouteId);
+    return r ? store.cities.find((c) => c.id === r.toCityId) : undefined;
+  }, [bulkRouteId, store.routes, store.cities]);
+
+  // Filter & paginate trips
+  const filteredTrips = useMemo(() => {
+    let trips = store.trips;
+    if (!showExpired) {
+      trips = trips.filter((t) => !isTripExpired(t.date, t.time));
+    }
+    return trips;
+  }, [store.trips, showExpired]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTrips.length / pageSize));
+  const paginatedTrips = filteredTrips.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
   const resetForm = () => {
     setAgencyId("");
     setRouteId("");
@@ -1879,6 +1921,39 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
   const closeDrawer = () => {
     setMode("closed");
     resetForm();
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisible = (ids: string[]) => {
+    setSelectedIds(new Set(ids));
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkDelete = () => {
+    const toDelete = store.trips.filter((t) => selectedIds.has(t.id));
+    const withBookings = toDelete.filter((t) =>
+      store.bookings.some((b) => b.tripId === t.id)
+    );
+    if (withBookings.length > 0) {
+      toast.error(`${withBookings.length} selected trip(s) have bookings and cannot be deleted.`);
+      return;
+    }
+    persist({
+      ...store,
+      trips: store.trips.filter((t) => !selectedIds.has(t.id)),
+    });
+    toast.success(`${toDelete.length} trip(s) deleted`);
+    setSelectedIds(new Set());
   };
 
   const openEdit = (t: Trip) => {
@@ -1954,6 +2029,55 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
     closeDrawer();
   };
 
+  const submitBulk = () => {
+    if (!bulkAgencyId || !bulkRouteId || !bulkBusTemplateId || !bulkTime)
+      return toast.error("Fill all fields");
+    if (!Number(bulkPriceRegular) || !Number(bulkPriceVip))
+      return toast.error("Enter pricing");
+    if (!bulkStartDate || !bulkEndDate)
+      return toast.error("Select start and end dates");
+
+    const start = new Date(bulkStartDate);
+    const end = new Date(bulkEndDate);
+    if (start > end) return toast.error("Start date must be before end date");
+
+    const newTrips: Trip[] = [];
+    const cur = new Date(start);
+    while (cur <= end) {
+      const dateStr = cur.toISOString().slice(0, 10);
+      const id = `t-${Date.now()}-${newTrips.length}`;
+      newTrips.push({
+        id,
+        agencyId: bulkAgencyId,
+        routeId: bulkRouteId,
+        busTemplateId: bulkBusTemplateId,
+        date: dateStr,
+        time: bulkTime,
+        priceRegular: Number(bulkPriceRegular),
+        priceVip: Number(bulkPriceVip),
+        takenSeats: [],
+        dropOffId: bulkDropOffId || undefined,
+      });
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    persist({
+      ...store,
+      trips: [...store.trips, ...newTrips],
+    });
+    toast.success(`${newTrips.length} trips published`);
+    setMode("closed");
+    setBulkAgencyId("");
+    setBulkRouteId("");
+    setBulkBusTemplateId("");
+    setBulkTime("");
+    setBulkPriceRegular("");
+    setBulkPriceVip("");
+    setBulkDropOffId("");
+    setBulkStartDate("");
+    setBulkEndDate("");
+  };
+
   const remove = (t: Trip) => {
     const hasBookings = store.bookings.some((b) => b.tripId === t.id);
     if (hasBookings) return toast.error("Trip has bookings. Cancel instead.");
@@ -1966,34 +2090,92 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
       title="Trips"
       subtitle="Published trips with VIP / Regular pricing."
       action={
-        <button onClick={() => setMode("new")} className="btn-primary text-sm h-9 px-3">
-          <Plus className="h-4 w-4" /> Publish trip
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowExpired((s) => !s)}
+            className={cn(
+              "text-xs h-9 px-3 rounded-xl border transition-all",
+              showExpired
+                ? "bg-amber-50 border-amber-200 text-amber-700"
+                : "bg-white border-ink-200 text-ink-600 hover:border-ink-300"
+            )}
+          >
+            {showExpired ? "Hide expired" : "Show expired"}
+          </button>
+          <button onClick={() => setMode("bulk")} className="btn-secondary text-sm h-9 px-3">
+            <CalendarDays className="h-4 w-4" /> Bulk create
+          </button>
+          <button onClick={() => setMode("new")} className="btn-primary text-sm h-9 px-3">
+            <Plus className="h-4 w-4" /> Publish trip
+          </button>
+        </div>
       }
     >
-      {store.trips.length === 0 ? (
+      {filteredTrips.length === 0 ? (
         <div className="card p-10 text-center">
           <TicketIcon className="h-8 w-8 text-ink-300 mx-auto" />
-          <p className="text-ink-600 font-medium mt-3">No trips yet</p>
-          <p className="text-ink-400 text-sm">Publish your first trip to start receiving bookings.</p>
+          <p className="text-ink-600 font-medium mt-3">
+            {store.trips.length > 0 ? "All visible trips have expired" : "No trips yet"}
+          </p>
+          <p className="text-ink-400 text-sm">
+            {store.trips.length > 0
+              ? "Toggle 'Show expired' above to view past trips."
+              : "Publish your first trip to start receiving bookings."}
+          </p>
         </div>
       ) : (
         <div className="card overflow-hidden">
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between px-4 py-2 bg-brand-50 border-b border-brand-100">
+              <span className="text-xs font-semibold text-brand-800">
+                {selectedIds.size} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={clearSelection}
+                  className="text-xs px-2 py-1 rounded-md text-brand-700 hover:bg-brand-100"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={bulkDelete}
+                  className="text-xs px-2 py-1 rounded-md bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 flex items-center gap-1"
+                >
+                  <Trash2 className="h-3 w-3" /> Delete
+                </button>
+              </div>
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead className="bg-ink-50/60 text-ink-500 text-xs uppercase tracking-wider">
               <tr>
-                <th className="text-left px-4 py-2.5 font-medium">Agency</th>
-                <th className="text-left px-4 py-2.5 font-medium">Route</th>
-                <th className="text-left px-4 py-2.5 font-medium">Drop-off</th>
-                <th className="text-left px-4 py-2.5 font-medium">Date · Time</th>
-                <th className="text-left px-4 py-2.5 font-medium">Bus</th>
-                <th className="text-right px-4 py-2.5 font-medium">Regular</th>
-                <th className="text-right px-4 py-2.5 font-medium">VIP</th>
-                <th className="text-right px-4 py-2.5 font-medium">Actions</th>
+                <th className="px-3 py-2.5 font-medium w-10">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-brand-600 cursor-pointer"
+                    checked={selectedIds.size > 0 && selectedIds.size === filteredTrips.length}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        selectAllVisible(filteredTrips.map((t) => t.id));
+                      } else {
+                        clearSelection();
+                      }
+                    }}
+                  />
+                </th>
+                <th className="text-left px-4 py-2.5 font-medium w-[150px]">Agency</th>
+                <th className="text-left px-4 py-2.5 font-medium w-[80px]">Route</th>
+                <th className="text-left px-4 py-2.5 font-medium w-[120px]">Drop-off</th>
+                <th className="text-left px-4 py-2.5 font-medium w-[140px]">Date · Time</th>
+                <th className="text-left px-4 py-2.5 font-medium w-[90px]">Bus</th>
+                <th className="text-right px-4 py-2.5 font-medium w-[70px]">Bookings</th>
+                <th className="text-right px-4 py-2.5 font-medium w-[70px]">Regular</th>
+                <th className="text-right px-4 py-2.5 font-medium w-[60px]">VIP</th>
+                <th className="text-right px-4 py-2.5 font-medium w-16">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {store.trips.map((t) => {
+              {paginatedTrips.map((t) => {
                 const r = store.routes.find((x) => x.id === t.routeId);
                 const a = store.cities.find((c) => c.id === r?.fromCityId);
                 const b = store.cities.find((c) => c.id === r?.toCityId);
@@ -2002,8 +2184,23 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
                 const dropOff = t.dropOffId
                   ? b?.dropOffs?.find((d) => d.id === t.dropOffId)
                   : undefined;
+                const tripBookings = store.bookings.filter(
+                  (b) => b.tripId === t.id && b.status !== "cancelled"
+                );
+                const expired = isTripExpired(t.date, t.time);
                 return (
-                  <tr key={t.id} className="border-t border-ink-100 hover:bg-ink-50/40">
+                  <tr key={t.id} className={cn(
+                    "border-t border-ink-100 hover:bg-ink-50/40",
+                    expired && "opacity-50 bg-ink-50/20"
+                  )}>
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 accent-brand-600 cursor-pointer"
+                        checked={selectedIds.has(t.id)}
+                        onChange={() => toggleSelect(t.id)}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       {agency ? (
                         <div className="flex items-center gap-2">
@@ -2033,6 +2230,11 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
                           <span className="text-ink-700 truncate max-w-[140px]">
                             {agency.name}
                           </span>
+                          {expired && (
+                            <span className="inline-flex items-center rounded-full bg-ink-100 px-2 py-0.5 text-[10px] font-semibold text-ink-500 uppercase tracking-wider">
+                              Expired
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <span className="text-rose-500 text-xs italic">
@@ -2057,6 +2259,15 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
                       {formatDate(t.date)} · <span className="font-mono">{t.time}</span>
                     </td>
                     <td className="px-4 py-3 text-ink-700">{tpl?.name}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={cn(
+                        "inline-flex items-center gap-1 text-xs font-medium",
+                        tripBookings.length > 0 ? "text-ink-800" : "text-ink-400"
+                      )}>
+                        <Users className="h-3 w-3" />
+                        {tripBookings.length}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-right font-medium text-ink-900">{formatFCFA(t.priceRegular)}</td>
                     <td className="px-4 py-3 text-right font-medium text-ink-900">{formatFCFA(t.priceVip)}</td>
                     <td className="px-4 py-3 text-right">
@@ -2082,11 +2293,36 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
               })}
             </tbody>
           </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-2 border-t border-ink-100 bg-ink-50/30">
+              <span className="text-xs text-ink-500">
+                Page {currentPage} of {totalPages} · {filteredTrips.length} trips
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 disabled:opacity-40 transition-colors"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 disabled:opacity-40 transition-colors"
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       <Drawer
-        open={drawerOpen}
+        open={drawerOpen && mode !== "bulk"}
         title={isEditing ? "Edit trip" : "Publish a new trip"}
         onClose={closeDrawer}
         wide
@@ -2194,6 +2430,110 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
             <button onClick={submit} className="btn-primary text-sm">
               {isEditing ? "Save changes" : "Publish"}
             </button>
+          </div>
+        </div>
+      </Drawer>
+
+      <Drawer
+        open={mode === "bulk"}
+        title="Bulk create trips"
+        onClose={closeDrawer}
+        wide
+      >
+        <div className="space-y-4">
+          <Field label="Agency">
+            <Select value={bulkAgencyId} onChange={(e) => setBulkAgencyId(e.target.value)}>
+              <option value="">Select an agency…</option>
+              {store.agencies.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Route">
+            <Select
+              value={bulkRouteId}
+              onChange={(e) => {
+                setBulkRouteId(e.target.value);
+                setBulkDropOffId("");
+              }}
+            >
+              <option value="">Select a route…</option>
+              {store.routes.map((r) => {
+                const a = store.cities.find((c) => c.id === r.fromCityId);
+                const b = store.cities.find((c) => c.id === r.toCityId);
+                return (
+                  <option key={r.id} value={r.id}>
+                    {a?.name} → {b?.name}
+                  </option>
+                );
+              })}
+            </Select>
+          </Field>
+
+          {bulkRouteId && (
+            <Field
+              label={`Drop-off in ${bulkToCity?.name ?? "destination"}`}
+              hint={
+                bulkToCity && (bulkToCity.dropOffs?.length ?? 0) === 0
+                  ? "No drop-offs configured for this city."
+                  : "Defaults to city center."
+              }
+            >
+              <Select
+                value={bulkDropOffId}
+                onChange={(e) => setBulkDropOffId(e.target.value)}
+                disabled={!bulkToCity || (bulkToCity.dropOffs?.length ?? 0) === 0}
+              >
+                <option value="">{bulkToCity?.name ?? "City"} — city center (default)</option>
+                {bulkToCity?.dropOffs?.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
+
+          <Field label="Bus template">
+            <Select value={bulkBusTemplateId} onChange={(e) => setBulkBusTemplateId(e.target.value)}>
+              <option value="">Select a template…</option>
+              {store.busTemplates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name} · {t.type}</option>
+              ))}
+            </Select>
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Start date">
+              <Input type="date" value={bulkStartDate} onChange={(e) => setBulkStartDate(e.target.value)} />
+            </Field>
+            <Field label="End date">
+              <Input type="date" value={bulkEndDate} onChange={(e) => setBulkEndDate(e.target.value)} />
+            </Field>
+          </div>
+
+          <Field label="Time">
+            <Select value={bulkTime} onChange={(e) => setBulkTime(e.target.value)}>
+              <option value="">Pick time…</option>
+              {store.schedules.map((s) => (
+                <option key={s.id} value={s.time}>
+                  {s.time}{s.label ? ` · ${s.label}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Price Regular (FCFA)">
+              <Input type="number" min={500} value={bulkPriceRegular} onChange={(e) => setBulkPriceRegular(e.target.value)} placeholder="4000" />
+            </Field>
+            <Field label="Price VIP (FCFA)">
+              <Input type="number" min={500} value={bulkPriceVip} onChange={(e) => setBulkPriceVip(e.target.value)} placeholder="7500" />
+            </Field>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={closeDrawer} className="btn-secondary text-sm">Cancel</button>
+            <button onClick={submitBulk} className="btn-primary text-sm">Publish trips</button>
           </div>
         </div>
       </Drawer>

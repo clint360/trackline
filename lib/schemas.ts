@@ -16,7 +16,7 @@ export const routeSchema = z
 export type RouteForm = z.infer<typeof routeSchema>;
 
 // Cameroon phone format: optional +237 then 6/7 followed by 8 digits
-const cmPhone = /^(?:\+?237)?\s?[26][\s\d]{8,12}$/;
+const cmPhone = /^(?:\+?237)?\s?[267][\s\d]{8,12}$/;
 
 export const passengerSchema = z.object({
   fullName: z

@@ -49,9 +49,6 @@ export function TopBar({
           <p className="text-[11px] text-ink-400 font-medium hidden sm:block">
             Dashboard / <span className="text-ink-700">{crumb}</span>
           </p>
-          <h1 className="text-base sm:text-lg font-bold text-ink-900 leading-tight truncate">
-            {meta.title}
-          </h1>
         </div>
 
         {/* Search */}
@@ -87,11 +84,6 @@ export function TopBar({
             <LogOut className="h-4 w-4" />
           </button>
         </div>
-      </div>
-
-      {/* Subtitle row (optional, on lg) */}
-      <div className="hidden lg:block px-4 sm:px-6 lg:px-8 pb-3 -mt-1 text-xs text-ink-500">
-        {meta.subtitle}
       </div>
     </header>
   );

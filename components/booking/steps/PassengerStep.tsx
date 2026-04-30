@@ -20,10 +20,11 @@ export function PassengerStep({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isValid },
   } = useForm<PassengerForm>({
     resolver: zodResolver(passengerSchema),
     defaultValues: initial ?? { fullName: "", phone: "", email: "" },
+    mode: "onChange",
   });
 
   return (
@@ -57,7 +58,7 @@ export function PassengerStep({
               <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
               <Input
                 inputMode="tel"
-                placeholder="+237 6 XX XX XX XX"
+                placeholder="6XX XXX XXX"
                 className="pl-10"
                 {...register("phone")}
                 invalid={!!errors.phone}
@@ -85,7 +86,11 @@ export function PassengerStep({
           </Field>
         </div>
 
-        <button type="submit" className="btn-primary w-full mt-6">
+        <button
+          type="submit"
+          disabled={!isValid}
+          className="btn-primary w-full mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           {t("continue_to_payment")}
           <ArrowRight className="h-4 w-4" />
         </button>

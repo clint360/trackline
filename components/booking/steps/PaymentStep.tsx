@@ -121,10 +121,11 @@ export function PaymentStep({
     handleSubmit,
     setValue,
     watch,
-    formState: { errors },
+    formState: { errors, isValid },
   } = useForm<PaymentForm>({
     resolver: zodResolver(paymentSchema),
     defaultValues: { method: "MTN", phone: passenger.phone },
+    mode: "onChange",
   });
 
   const method = watch("method");
@@ -300,12 +301,16 @@ export function PaymentStep({
           )}
 
           <div className="mt-5">
-            <Field label={t("mobile_money_phone")} error={errors.phone?.message}>
+            <Field
+              label={t("mobile_money_phone")}
+              error={errors.phone?.message}
+              hint={t("cm_phone_hint")}
+            >
               <div className="relative">
                 <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
                 <Input
                   inputMode="tel"
-                  placeholder="+237 6 XX XX XX XX"
+                  placeholder="6XX XXX XXX"
                   className="pl-10"
                   {...register("phone")}
                   invalid={!!errors.phone}
@@ -314,52 +319,57 @@ export function PaymentStep({
             </Field>
           </div>
 
-          <button type="submit" disabled={submitting} className="btn-primary w-full mt-6">
-            {submitting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t("processing")}
-              </>
-            ) : (
-              <>
-                {t("pay")} {formatFCFA(amount)}
-                <ArrowRight className="h-4 w-4" />
-              </>
-            )}
-          </button>
-          <p className="text-[11px] text-center text-ink-400 mt-3 flex items-center justify-center gap-1.5">
-            <Shield className="h-3 w-3" /> {t("encrypted_note")}
-          </p>
-        </form>
-      </div>
-
-      <aside className="card p-5 sm:p-6 lg:sticky lg:top-4">
-        <h3 className="font-semibold text-ink-900">{t("order_summary")}</h3>
-        <div className="mt-4 space-y-3 text-sm">
-          <Row label={t("passenger")} value={passenger.fullName} />
-          {passenger.email && (
-            <Row label="Email" value={passenger.email} />
+        <button
+          type="submit"
+          disabled={submitting || !isValid}
+          className="btn-primary w-full mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("processing")}
+            </>
+          ) : (
+            <>
+              {t("pay")} {formatFCFA(amount)}
+              <ArrowRight className="h-4 w-4" />
+            </>
           )}
-          <Row label={t("agency")} value={trip.agency.name} />
-          <Row
-            label={t("route")}
-            value={`${trip.fromCity.name} → ${trip.toCity.name}`}
-          />
-          <Row label={t("drop_off")} value={dropOffLabel} />
-          <Row label={t("date_label")} value={trip.date} />
-          <Row label={t("departure")} value={trip.time} />
-          <Row label={t("class")} value={seatClass} />
-          <Row label={t("seat_label")} value={seat} highlight />
-        </div>
-        <div className="mt-5 pt-5 border-t border-ink-100 flex items-center justify-between">
-          <span className="text-ink-500 text-sm">{t("total")}</span>
-          <span className="text-xl font-bold text-ink-900">
-            {formatFCFA(amount)}
-          </span>
-        </div>
-      </aside>
+        </button>
+        <p className="text-[11px] text-center text-ink-400 mt-3 flex items-center justify-center gap-1.5">
+          <Shield className="h-3 w-3" /> {t("encrypted_note")}
+        </p>
+      </form>
     </div>
-  );
+
+    <aside className="card p-5 sm:p-6 lg:sticky lg:top-4">
+      <h3 className="font-semibold text-ink-900">{t("order_summary")}</h3>
+      <div className="mt-4 space-y-3 text-sm">
+        <Row label={t("passenger")} value={passenger.fullName} />
+        {passenger.email && (
+          <Row label="Email" value={passenger.email} />
+        )}
+        <Row label={t("agency")} value={trip.agency.name} />
+        <Row
+          label={t("route")}
+          value={`${trip.fromCity.name} → ${trip.toCity.name}`}
+        />
+        <Row label={t("drop_off")} value={dropOffLabel} />
+        <Row label={t("date_label")} value={trip.date} />
+        <Row label={t("departure")} value={trip.time} />
+        <Row label={t("class")} value={seatClass} />
+        <Row label={t("seat_label")} value={seat} highlight />
+      </div>
+      <div className="mt-5 pt-5 border-t border-ink-100 flex items-center justify-between">
+        <span className="text-ink-500 text-sm">{t("total")}</span>
+        <span className="text-xl font-bold text-ink-900">
+          {formatFCFA(amount)}
+        </span>
+      </div>
+    </aside>
+  </div>
+);
+
 }
 
 /* ---------- Polling sub-component ---------- */
@@ -589,15 +599,14 @@ function PaymentOption({
   brandColor: string;
 }) {
   return (
-    <motion.button
+    <button
       type="button"
-      whileTap={{ scale: 0.97 }}
       onClick={onClick}
       className={cn(
-        "rounded-2xl border p-4 text-left transition-all",
+        "flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all cursor-pointer",
         selected
-          ? "border-brand-500 bg-brand-50/50 ring-2 ring-brand-200"
-          : "border-ink-200 hover:border-brand-300"
+          ? "border-brand-300 bg-brand-50 shadow-soft"
+          : "border-ink-200 hover:border-brand-300 hover:bg-ink-50/40"
       )}
     >
       <div
@@ -610,6 +619,6 @@ function PaymentOption({
       </div>
       <div className="mt-3 font-semibold text-ink-900 text-sm">{label}</div>
       <div className="text-xs text-ink-500 mt-0.5">{hint}</div>
-    </motion.button>
+    </button>
   );
 }

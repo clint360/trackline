@@ -264,8 +264,9 @@ export function DashboardStoreProvider({
 
   if (!store) {
     return (
-      <div className="min-h-[40vh] flex items-center justify-center text-ink-500 text-sm">
-        Loading workspace…
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 backdrop-blur-sm z-50">
+        <div className="h-10 w-10 rounded-full border-2 border-brand-200 border-t-brand-600 animate-spin" />
+        <p className="text-ink-600 text-sm font-medium">Loading workspace…</p>
       </div>
     );
   }
@@ -280,7 +281,7 @@ export function DashboardStoreProvider({
   return (
     <Ctx.Provider value={{ store, persist, reload: load }}>
       {error && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 mb-4">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 mb-2">
           {error}
         </div>
       )}

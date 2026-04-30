@@ -65,3 +65,11 @@ export function pickAvailability(seatsLeft: number, total: number) {
   if (ratio < 0.5) return "Fast filling" as const;
   return "Available" as const;
 }
+
+/** Check if a trip (date + time) is in the past */
+export function isTripExpired(date: string, time: string): boolean {
+  const now = new Date();
+  const [h, m] = time.split(":").map(Number);
+  const tripDate = new Date(date + "T" + String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":00");
+  return tripDate < now;
+}
