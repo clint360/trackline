@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { WhatsAppIcon } from "@/components/icons/WhatsApp";
 
-const PHONE = "237600000000"; // placeholder
+const PHONE = "237680612360"; // placeholder
 
 export default function WhatsAppButton() {
   const { t } = useI18n();
