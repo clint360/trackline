@@ -1,0 +1,1 @@
+﻿components/dashboard/sections.tsx(1429,30): error TS2304: Cannot find name 'create'.

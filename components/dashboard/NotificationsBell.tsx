@@ -1,20 +1,19 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Check, TicketIcon, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Bell, Check, RefreshCw, TicketIcon, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn, formatFCFA } from "@/lib/utils";
-import { useDashboardStore } from "./StoreProvider";
 
-const READ_KEY = "trackline:notifications:lastRead";
-
-interface Notification {
-  id: string;
+interface DbNotification {
+  id: number;
+  kind: string;
   title: string;
   body: string;
-  amount?: number;
-  ts: string;
-  iconKind: "booking" | "alert";
+  ref_id: string | null;
+  amount: number | null;
+  read: boolean;
+  created_at: string;
 }
 
 function fmtTs(iso: string) {
@@ -27,51 +26,44 @@ function fmtTs(iso: string) {
 }
 
 export function NotificationsBell() {
-  const { store } = useDashboardStore();
   const [open, setOpen] = useState(false);
-  const [lastRead, setLastRead] = useState(0);
+  const [notifs, setNotifs] = useState<DbNotification[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Hydrate last-read timestamp
-  useEffect(() => {
-    const v = Number(localStorage.getItem(READ_KEY) ?? "0");
-    setLastRead(v);
+  const fetchNotifs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/notifications");
+      if (!res.ok) return;
+      const data = await res.json();
+      setNotifs(data.notifications ?? []);
+    } catch {
+      // ignore
+    }
   }, []);
 
-  // Build notifications from the store. Today: each non-cancelled booking
-  // becomes a "ticket booked" notification. We can extend later with payment
-  // failures, low-availability alerts, etc.
-  const notifs = useMemo<Notification[]>(() => {
-    const list: Notification[] = [];
-    for (const b of store.bookings) {
-      if (b.status === "cancelled") continue;
-      list.push({
-        id: b.consignment,
-        title: `New booking · ${b.consignment}`,
-        body: `${b.passenger.fullName} paid ${b.paymentMethod === "MTN" ? "MTN MoMo" : "Orange Money"} for seat ${b.seat}`,
-        amount: b.amount,
-        ts: b.createdAt,
-        iconKind: "booking",
+  // Initial load once on mount
+  useEffect(() => {
+    fetchNotifs();
+  }, [fetchNotifs]);
+
+  // Refresh when opening panel
+  useEffect(() => {
+    if (open) fetchNotifs();
+  }, [open, fetchNotifs]);
+
+  const unreadCount = notifs.filter((n) => !n.read).length;
+
+  const markAllRead = async () => {
+    try {
+      await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ markAll: true }),
       });
+      setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch {
+      // ignore
     }
-    // Newest first, cap at 12
-    return list
-      .sort((a, b) => (a.ts < b.ts ? 1 : -1))
-      .slice(0, 12);
-  }, [store.bookings]);
-
-  const unreadCount = useMemo(
-    () =>
-      notifs.filter(
-        (n) => new Date(n.ts).getTime() > lastRead
-      ).length,
-    [notifs, lastRead]
-  );
-
-  const markAllRead = () => {
-    const now = Date.now();
-    localStorage.setItem(READ_KEY, String(now));
-    setLastRead(now);
   };
 
   // Close on outside click + escape
@@ -109,7 +101,7 @@ export function NotificationsBell() {
         aria-label="Notifications"
         aria-expanded={open}
         className={cn(
-          "relative p-2 rounded-xl text-ink-600 hover:bg-ink-100",
+          "relative p-2 rounded-xl text-ink-600 hover:bg-ink-100 transition-colors",
           open && "bg-ink-100 text-ink-900"
         )}
       >
@@ -138,17 +130,26 @@ export function NotificationsBell() {
                 </p>
                 <p className="text-[11px] text-ink-500">
                   {unreadCount > 0
-                    ? `${unreadCount} unread · live from bookings`
+                    ? `${unreadCount} unread · live from database`
                     : "All caught up"}
                 </p>
               </div>
-              <button
-                onClick={() => setOpen(false)}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={fetchNotifs}
+                  aria-label="Refresh"
+                  className="p-1.5 rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setOpen(false)}
                 aria-label="Close"
                 className="p-1.5 rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
+              </div>
             </div>
 
             {/* List */}
@@ -162,13 +163,15 @@ export function NotificationsBell() {
                     Nothing here yet
                   </p>
                   <p className="text-[11px] text-ink-400 mt-1 px-6">
-                    New bookings and payment events will appear here in real time.
+                    New bookings and cancellations will appear here in real time.
                   </p>
                 </div>
               ) : (
                 <ul className="divide-y divide-ink-100">
                   {notifs.map((n) => {
-                    const isUnread = new Date(n.ts).getTime() > lastRead;
+                    const isUnread = !n.read;
+                    const isBooking = n.kind === "booking.created";
+                    const isCancel = n.kind === "booking.cancelled";
                     return (
                       <li
                         key={n.id}
@@ -180,15 +183,19 @@ export function NotificationsBell() {
                         <div
                           className={cn(
                             "h-8 w-8 rounded-xl flex items-center justify-center shrink-0",
-                            n.iconKind === "booking"
-                              ? "bg-emerald-50 text-emerald-600"
+                            isCancel
+                              ? "bg-rose-50 text-rose-600"
+                              : isBooking
+                                ? "bg-emerald-50 text-emerald-600"
                               : "bg-amber-50 text-amber-600"
                           )}
                         >
-                          {n.iconKind === "booking" ? (
+                          {isCancel ? (
+                            <X className="h-4 w-4" />
+                          ) : isBooking ? (
                             <TicketIcon className="h-4 w-4" />
                           ) : (
-                            <Bell className="h-4 w-4" />
+                            <AlertTriangle className="h-4 w-4" />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -205,7 +212,7 @@ export function NotificationsBell() {
                           </p>
                           <div className="mt-1 flex items-center justify-between gap-2">
                             <span className="text-[10px] text-ink-400">
-                              {fmtTs(n.ts)}
+                              {fmtTs(n.created_at)}
                             </span>
                             {typeof n.amount === "number" && (
                               <span className="text-[11px] font-mono font-bold text-ink-800">
@@ -227,7 +234,7 @@ export function NotificationsBell() {
                 <button
                   onClick={markAllRead}
                   disabled={unreadCount === 0}
-                  className="text-[11px] font-semibold text-brand-700 disabled:text-ink-400 hover:text-brand-800 inline-flex items-center gap-1"
+                  className="text-[11px] font-semibold text-brand-700 disabled:text-ink-400 hover:text-brand-800 inline-flex items-center gap-1 transition-colors"
                 >
                   <Check className="h-3 w-3" />
                   Mark all as read

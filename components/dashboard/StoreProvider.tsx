@@ -2,7 +2,6 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { getSupabase, SUPABASE_LIVE } from "@/lib/supabase/client";
-import { fetchCatalog } from "@/lib/supabase/queries";
 import {
   agencyToRow,
   cityToRow,
@@ -80,7 +79,12 @@ export function DashboardStoreProvider({
       return;
     }
     try {
-      const data = await fetchCatalog(sb);
+      const res = await fetch("/api/admin/catalog");
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? "Failed to load catalog");
+      }
+      const data = await res.json();
       setStore({ ...EMPTY_STORE, ...data });
       setError(null);
     } catch (e) {
@@ -281,7 +285,7 @@ export function DashboardStoreProvider({
   return (
     <Ctx.Provider value={{ store, persist, reload: load }}>
       {error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 mb-2">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 shadow-lg">
           {error}
         </div>
       )}
@@ -290,7 +294,7 @@ export function DashboardStoreProvider({
   );
 }
 
-export function useDashboardStore() {
+export function useDashboardStore(): DashboardStoreContext {
   const ctx = useContext(Ctx);
   if (!ctx)
     throw new Error("useDashboardStore must be used inside DashboardStoreProvider");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowRight, ArrowUpDown, Calendar, MapPin, Shield } from "lucide-react";
 import { CITIES } from "@/lib/mock-data";
@@ -21,10 +21,9 @@ export function RouteStep({
 }) {
   const { t } = useI18n();
   const {
-    register,
+    control,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<RouteForm>({
     resolver: zodResolver(routeSchema),
@@ -35,11 +34,13 @@ export function RouteStep({
     },
   });
 
+  const fromCity = useController({ name: "fromCityId", control });
+  const toCity = useController({ name: "toCityId", control });
+  const dateCtrl = useController({ name: "date", control });
+
   const swap = () => {
-    const a = watch("fromCityId");
-    const b = watch("toCityId");
-    setValue("fromCityId", b, { shouldValidate: true });
-    setValue("toCityId", a, { shouldValidate: true });
+    setValue("fromCityId", toCity.field.value, { shouldValidate: true });
+    setValue("toCityId", fromCity.field.value, { shouldValidate: true });
   };
 
   return (
@@ -75,7 +76,11 @@ export function RouteStep({
                   />
                   <select
                     id="from-city"
-                    {...register("fromCityId")}
+                    value={fromCity.field.value}
+                    onChange={fromCity.field.onChange}
+                    onBlur={fromCity.field.onBlur}
+                    name={fromCity.field.name}
+                    ref={fromCity.field.ref}
                     aria-invalid={!!errors.fromCityId}
                     className="appearance-none w-full bg-transparent text-ink-900 outline-none pl-6 pr-7 py-0.5 text-base sm:text-lg font-semibold cursor-pointer"
                     style={{
@@ -136,7 +141,11 @@ export function RouteStep({
                   />
                   <select
                     id="to-city"
-                    {...register("toCityId")}
+                    value={toCity.field.value}
+                    onChange={toCity.field.onChange}
+                    onBlur={toCity.field.onBlur}
+                    name={toCity.field.name}
+                    ref={toCity.field.ref}
                     aria-invalid={!!errors.toCityId}
                     className="appearance-none w-full bg-transparent text-ink-900 outline-none pl-6 pr-7 py-0.5 text-base sm:text-lg font-semibold cursor-pointer"
                     style={{
@@ -190,7 +199,10 @@ export function RouteStep({
                     />
                     <select
                       id="from-city-m"
-                      {...register("fromCityId")}
+                      value={fromCity.field.value}
+                      onChange={fromCity.field.onChange}
+                      onBlur={fromCity.field.onBlur}
+                      name={fromCity.field.name}
                       aria-invalid={!!errors.fromCityId}
                       className="appearance-none w-full bg-transparent text-ink-900 outline-none pl-6 pr-7 py-0.5 text-base font-semibold cursor-pointer"
                       style={{
@@ -232,7 +244,10 @@ export function RouteStep({
                     />
                     <select
                       id="to-city-m"
-                      {...register("toCityId")}
+                      value={toCity.field.value}
+                      onChange={toCity.field.onChange}
+                      onBlur={toCity.field.onBlur}
+                      name={toCity.field.name}
                       aria-invalid={!!errors.toCityId}
                       className="appearance-none w-full bg-transparent text-ink-900 outline-none pl-6 pr-7 py-0.5 text-base font-semibold cursor-pointer"
                       style={{
@@ -283,7 +298,11 @@ export function RouteStep({
                 type="date"
                 min={todayISO()}
                 className="pl-10 w-full block"
-                {...register("date")}
+                value={dateCtrl.field.value}
+                onChange={dateCtrl.field.onChange}
+                onBlur={dateCtrl.field.onBlur}
+                name={dateCtrl.field.name}
+                ref={dateCtrl.field.ref}
                 invalid={!!errors.date}
               />
             </div>

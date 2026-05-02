@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  ArrowUpDown,
   Bus,
   Building2,
   CalendarDays,
@@ -10,6 +11,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
+  Eye,
+  EyeOff,
+  Filter,
   GitBranch,
   Lock,
   MapPin,
@@ -17,6 +21,7 @@ import {
   Phone,
   Plus,
   Receipt,
+  RefreshCw,
   Search,
   TicketIcon,
   Trash2,
@@ -28,6 +33,7 @@ import { useMemo, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { SeatLayoutBuilder } from "./SeatLayoutBuilder";
+import { useDashboardStore } from "./StoreProvider";
 import { cn, formatDate, formatFCFA, isTripExpired } from "@/lib/utils";
 import type { Store } from "@/lib/store";
 import type { Agency, BusTemplate, City, DropOff, Route, Schedule, SeatLayout, SeatClass, Trip } from "@/lib/types";
@@ -1250,8 +1256,6 @@ export function RoutesSection({ store, persist }: { store: Store; persist: Persi
 
   const activeCities = store.cities.filter((c) => c.active);
 
-  const inUse = (rid: string) => store.trips.some((t) => t.routeId === rid);
-
   const create = () => {
     if (!from || !to) return toast.error("Pick both cities");
     if (from === to) return toast.error("Cities must differ");
@@ -1269,6 +1273,8 @@ export function RoutesSection({ store, persist }: { store: Store; persist: Persi
     setFrom("");
     setTo("");
   };
+
+  const inUse = (rid: string) => store.trips.some((t) => t.routeId === rid);
 
   const remove = (r: Route) => {
     if (inUse(r.id)) return toast.error("Route is in use by trips.");
@@ -1369,17 +1375,13 @@ export function SchedulesSection({ store, persist }: { store: Store; persist: Pe
   const [time, setTime] = useState("");
   const [label, setLabel] = useState("");
 
-  const inUse = (sid: string) => store.trips.some((t) => t.time === store.schedules.find((s) => s.id === sid)?.time);
-
-  const create = () => {
-    if (!/^\d{2}:\d{2}$/.test(time)) return toast.error("Use HH:mm");
-    persist({
-      ...store,
-      schedules: [
-        ...store.schedules,
-        { id: `s-${Date.now()}`, time, label: label || undefined },
-      ],
-    });
+  const createSchedule = () => {
+    if (!time) return toast.error("Please select a time.");
+    if (store.schedules.some((s) => s.time === time)) {
+      return toast.error("A schedule with this time already exists.");
+    }
+    const schedule: Schedule = { id: crypto.randomUUID(), time, label };
+    persist({ ...store, schedules: [...store.schedules, schedule] });
     toast.success("Schedule added");
     setAdding(false);
     setTime("");
@@ -1387,7 +1389,6 @@ export function SchedulesSection({ store, persist }: { store: Store; persist: Pe
   };
 
   const remove = (s: Schedule) => {
-    if (inUse(s.id)) return toast.error("Schedule is in use by trips.");
     persist({ ...store, schedules: store.schedules.filter((x) => x.id !== s.id) });
     toast.info("Schedule removed");
   };
@@ -1429,7 +1430,7 @@ export function SchedulesSection({ store, persist }: { store: Store; persist: Pe
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={() => setAdding(false)} className="btn-secondary text-sm">Cancel</button>
-            <button onClick={create} className="btn-primary text-sm">Add</button>
+            <button onClick={createSchedule} className="btn-primary text-sm">Add</button>
           </div>
         </div>
       </Drawer>
@@ -1439,15 +1440,24 @@ export function SchedulesSection({ store, persist }: { store: Store; persist: Pe
 
 /* ---------- Bookings ---------- */
 
-export function BookingsSection({ store }: { store: Store }) {
+export function BookingsSection() {
+  const { store, reload } = useDashboardStore();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "valid" | "used" | "cancelled"
   >("all");
   const [agencyFilter, setAgencyFilter] = useState<string>("all");
 
+  type EnrichedRow = {
+    booking: Store["bookings"][number];
+    trip: Trip | undefined;
+    agency: Agency | undefined;
+    fromCity: City | undefined;
+    toCity: City | undefined;
+  };
+
   // Hydrate context: trip → agency, route + cities, drop-off label
-  const enriched = useMemo(() => {
+  const enriched = useMemo<EnrichedRow[]>(() => {
     return store.bookings.map((b) => {
       const trip = store.trips.find((t) => t.id === b.tripId);
       const agency = trip
@@ -1472,7 +1482,7 @@ export function BookingsSection({ store }: { store: Store }) {
     });
   }, [store.bookings, store.trips, store.agencies, store.routes, store.cities]);
 
-  const filtered = useMemo(() => {
+  const filtered = useMemo<EnrichedRow[]>(() => {
     const q = query.trim().toLowerCase();
     return enriched.filter((row) => {
       const b = row.booking;
@@ -1566,6 +1576,14 @@ export function BookingsSection({ store }: { store: Store }) {
               </option>
             ))}
           </Select>
+          <button
+            onClick={() => reload?.()}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 text-sm transition-colors"
+            aria-label="Reload bookings"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Reload
+          </button>
         </div>
       </div>
 
@@ -1843,9 +1861,17 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Pagination & expired filter
+  // Pagination, expired filter & sorting
   const [currentPage, setCurrentPage] = useState(1);
   const [showExpired, setShowExpired] = useState(false);
+
+  // Table filters
+  const [agencyFilter, setAgencyFilter] = useState<string>("all");
+  const [routeFilter, setRouteFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("");
+  const [sortBy, setSortBy] = useState<
+    "date-desc" | "date-asc" | "price-regular-asc" | "price-regular-desc" | "price-vip-asc" | "price-vip-desc" | "bookings"
+  >("date-desc");
   const pageSize = 10;
 
   // Bulk create state
@@ -1891,14 +1917,57 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
     return r ? store.cities.find((c) => c.id === r.toCityId) : undefined;
   }, [bulkRouteId, store.routes, store.cities]);
 
-  // Filter & paginate trips
+  // Filter, sort & paginate trips
   const filteredTrips = useMemo(() => {
     let trips = store.trips;
     if (!showExpired) {
       trips = trips.filter((t) => !isTripExpired(t.date, t.time));
     }
+    if (agencyFilter !== "all") {
+      trips = trips.filter((t) => t.agencyId === agencyFilter);
+    }
+    if (routeFilter !== "all") {
+      trips = trips.filter((t) => t.routeId === routeFilter);
+    }
+    if (dateFilter) {
+      trips = trips.filter((t) => t.date === dateFilter);
+    }
+    // Sorting
+    trips = [...trips].sort((a, b) => {
+      switch (sortBy) {
+        case "date-desc": {
+          const da = new Date(a.date + "T" + a.time).getTime();
+          const db = new Date(b.date + "T" + b.time).getTime();
+          return db - da;
+        }
+        case "date-asc": {
+          const da = new Date(a.date + "T" + a.time).getTime();
+          const db = new Date(b.date + "T" + b.time).getTime();
+          return da - db;
+        }
+        case "price-regular-asc":
+          return a.priceRegular - b.priceRegular;
+        case "price-regular-desc":
+          return b.priceRegular - a.priceRegular;
+        case "price-vip-asc":
+          return a.priceVip - b.priceVip;
+        case "price-vip-desc":
+          return b.priceVip - a.priceVip;
+        case "bookings": {
+          const ba = store.bookings.filter(
+            (bk) => bk.tripId === a.id && bk.status !== "cancelled"
+          ).length;
+          const bb = store.bookings.filter(
+            (bk) => bk.tripId === b.id && bk.status !== "cancelled"
+          ).length;
+          return bb - ba;
+        }
+        default:
+          return 0;
+      }
+    });
     return trips;
-  }, [store.trips, showExpired]);
+  }, [store.trips, store.bookings, showExpired, sortBy, agencyFilter, routeFilter, dateFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTrips.length / pageSize));
   const paginatedTrips = filteredTrips.slice(
@@ -2091,35 +2160,170 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
       subtitle="Published trips with VIP / Regular pricing."
       action={
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-400 pointer-events-none" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="text-xs h-9 pl-8 pr-8 rounded-lg border border-ink-200 bg-white text-ink-700 hover:border-ink-300 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-100 focus:border-brand-300 appearance-none bg-no-repeat"
+              style={{
+                backgroundImage:
+                  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E\")",
+                backgroundPosition: "right 0.5rem center",
+                backgroundSize: "1rem",
+              }}
+            >
+              <option value="date-desc">Date newest</option>
+              <option value="date-asc">Date oldest</option>
+              <option value="price-regular-asc">Price regular low→high</option>
+              <option value="price-regular-desc">Price regular high→low</option>
+              <option value="price-vip-asc">Price VIP low→high</option>
+              <option value="price-vip-desc">Price VIP high→low</option>
+              <option value="bookings">Most bookings</option>
+            </select>
+          </div>
           <button
-            onClick={() => setShowExpired((s) => !s)}
-            className={cn(
-              "text-xs h-9 px-3 rounded-xl border transition-all",
-              showExpired
-                ? "bg-amber-50 border-amber-200 text-amber-700"
-                : "bg-white border-ink-200 text-ink-600 hover:border-ink-300"
-            )}
+            onClick={() => setMode("bulk")}
+            className="btn-secondary text-sm h-9 px-3 inline-flex items-center gap-1.5 rounded-lg"
           >
-            {showExpired ? "Hide expired" : "Show expired"}
-          </button>
-          <button onClick={() => setMode("bulk")} className="btn-secondary text-sm h-9 px-3">
             <CalendarDays className="h-4 w-4" /> Bulk create
           </button>
-          <button onClick={() => setMode("new")} className="btn-primary text-sm h-9 px-3">
+          <button
+            onClick={() => setMode("new")}
+            className="btn-primary text-sm h-9 px-3 inline-flex items-center gap-1.5 rounded-lg"
+          >
             <Plus className="h-4 w-4" /> Publish trip
           </button>
         </div>
       }
     >
+      {/* Filters */}
+      <div className="card p-3 sm:p-4">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3 justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Agency filter */}
+            <div className="relative">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-400 pointer-events-none" />
+              <select
+                value={agencyFilter}
+                onChange={(e) => {
+                  setAgencyFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="text-xs h-9 pl-8 pr-8 rounded-lg border border-ink-200 bg-white text-ink-700 hover:border-ink-300 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-100 focus:border-brand-300 appearance-none bg-no-repeat sm:max-w-[180px]"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E\")",
+                  backgroundPosition: "right 0.5rem center",
+                  backgroundSize: "1rem",
+                }}
+              >
+                <option value="all">All agencies</option>
+                {store.agencies.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Route filter */}
+            <div className="relative">
+              <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-400 pointer-events-none" />
+              <select
+                value={routeFilter}
+                onChange={(e) => {
+                  setRouteFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="text-xs h-9 pl-8 pr-8 rounded-lg border border-ink-200 bg-white text-ink-700 hover:border-ink-300 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-100 focus:border-brand-300 appearance-none bg-no-repeat sm:max-w-[200px]"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E\")",
+                  backgroundPosition: "right 0.5rem center",
+                  backgroundSize: "1rem",
+                }}
+              >
+                <option value="all">All routes</option>
+                {store.routes.map((r) => {
+                  const fromCity = store.cities.find((c) => c.id === r.fromCityId);
+                  const toCity = store.cities.find((c) => c.id === r.toCityId);
+                  return (
+                    <option key={r.id} value={r.id}>
+                      {fromCity?.code ?? r.fromCityId} → {toCity?.code ?? r.toCityId}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Date filter */}
+            <div className="relative">
+              <CalendarDays className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-400 pointer-events-none" />
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => {
+                  setDateFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="text-xs h-9 pl-8 pr-3 rounded-lg border border-ink-200 bg-white text-ink-700 hover:border-ink-300 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-100 focus:border-brand-300"
+              />
+            </div>
+
+            {/* Clear filters */}
+            {(agencyFilter !== "all" || routeFilter !== "all" || dateFilter || showExpired) && (
+              <button
+                onClick={() => {
+                  setAgencyFilter("all");
+                  setRouteFilter("all");
+                  setDateFilter("");
+                  setShowExpired(false);
+                  setCurrentPage(1);
+                }}
+                className="text-[11px] font-medium text-ink-500 hover:text-rose-600 inline-flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-rose-50 transition-colors"
+              >
+                <X className="h-3 w-3" /> Clear
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Show expired toggle */}
+            <button
+              onClick={() => setShowExpired((s) => !s)}
+              className={cn(
+                "inline-flex items-center gap-1.5 text-xs h-9 px-3 rounded-lg border transition-all font-medium",
+                showExpired
+                  ? "bg-amber-50 border-amber-200 text-amber-700 shadow-sm ring-1 ring-amber-100"
+                  : "bg-white border-ink-200 text-ink-600 hover:border-ink-300 hover:bg-ink-50/50"
+              )}
+            >
+              {showExpired ? (
+                <EyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+              {showExpired ? "Hide expired" : "Show expired"}
+            </button>
+
+            {/* Results count */}
+            <span className="text-[11px] text-ink-400 font-medium px-1 whitespace-nowrap">
+              {filteredTrips.length} trip{filteredTrips.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+        </div>
+      </div>
+
       {filteredTrips.length === 0 ? (
         <div className="card p-10 text-center">
           <TicketIcon className="h-8 w-8 text-ink-300 mx-auto" />
           <p className="text-ink-600 font-medium mt-3">
-            {store.trips.length > 0 ? "All visible trips have expired" : "No trips yet"}
+            {store.trips.length > 0 ? "No trips match filters" : "No trips yet"}
           </p>
           <p className="text-ink-400 text-sm">
             {store.trips.length > 0
-              ? "Toggle 'Show expired' above to view past trips."
+              ? "Try adjusting filters above or publish a new trip."
               : "Publish your first trip to start receiving bookings."}
           </p>
         </div>
@@ -2153,10 +2357,10 @@ export function TripsSection({ store, persist }: { store: Store; persist: Persis
                   <input
                     type="checkbox"
                     className="h-3.5 w-3.5 accent-brand-600 cursor-pointer"
-                    checked={selectedIds.size > 0 && selectedIds.size === filteredTrips.length}
+                    checked={selectedIds.size > 0 && paginatedTrips.length > 0 && paginatedTrips.every((t) => selectedIds.has(t.id))}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        selectAllVisible(filteredTrips.map((t) => t.id));
+                        selectAllVisible(paginatedTrips.map((t) => t.id));
                       } else {
                         clearSelection();
                       }

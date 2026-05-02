@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Menu, Search } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
   SIDEBAR_ITEMS,
@@ -49,18 +49,6 @@ export function TopBar({
           <p className="text-[11px] text-ink-400 font-medium hidden sm:block">
             Dashboard / <span className="text-ink-700">{crumb}</span>
           </p>
-        </div>
-
-        {/* Search */}
-        <div className="hidden md:flex relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-          <input
-            placeholder="Search…"
-            className="w-64 pl-9 pr-3 py-2 rounded-xl border border-ink-200 bg-white text-sm outline-none focus:border-brand-400 focus:shadow-ring transition"
-          />
-          <kbd className="absolute right-2 top-1/2 -translate-y-1/2 hidden lg:inline-flex items-center px-1.5 py-0.5 rounded-md border border-ink-200 bg-ink-50 text-[10px] font-mono text-ink-500">
-            ⌘K
-          </kbd>
         </div>
 
         {/* Bell */}

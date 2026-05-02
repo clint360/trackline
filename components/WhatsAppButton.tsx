@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { WhatsAppIcon } from "@/components/icons/WhatsApp";
 
@@ -8,6 +9,9 @@ const PHONE = "237600000000"; // placeholder
 
 export default function WhatsAppButton() {
   const { t } = useI18n();
+  const pathname = usePathname();
+  const isDashboard = pathname?.startsWith("/dashboard");
+  if (isDashboard) return null;
   const message = encodeURIComponent(t("whatsapp_message"));
 
   return (
